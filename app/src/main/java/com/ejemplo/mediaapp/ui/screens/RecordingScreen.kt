@@ -1,17 +1,13 @@
 package com.ejemplo.mediaapp.ui.screens
 
-
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
-import android.provider.OpenableColumns
-import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,10 +40,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.ejemplo.mediaapp.data.AudioRecorder
 import com.ejemplo.mediaapp.data.MediaType
 import com.ejemplo.mediaapp.viewmodel.MediaViewModel
@@ -55,38 +55,69 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// --- 15. Sreen 1: Grabación ---
+// --- Screen 1: Grabación ---
 @Composable
 fun RecordingScreen(
     mediaViewModel: MediaViewModel,
-    audioRecorder: AudioRecorder // Recibimos el helper
+    audioRecorder: AudioRecorder
 ) {
     val context = LocalContext.current
-    var hasPermissions by remember { mutableStateOf(false) }
-// --- Estado de la UI ---
-    var isRecordingAudio by remember { mutableStateOf(false) }
-    var currentAudioFile by remember { mutableStateOf<File?>(null) }
-// --- Estado para las URIs de Cámara ---
-    var tempImageUri by remember { mutableStateOf<Uri?>(null) }
-    var tempVideoUri by remember { mutableStateOf<Uri?>(null) }
-// --- Permisos ---
-    val requiredPermissions = getRequiredPermissions()
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        hasPermissions = permissions.values.all { it }
-    }
-    LaunchedEffect(Unit) {
-        hasPermissions = requiredPermissions.all {
+
+    // Obtenemos permisos correctos según el Manifest
+    val requiredPermissions = remember { getRequiredPermissions() }
+
+    // Función auxiliar para verificar si YA tenemos los permisos
+    fun checkPermissions(): Boolean {
+        return requiredPermissions.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
+    }
+
+    // 1. Inicializamos el estado verificando la realidad actual
+    var hasPermissions by remember { mutableStateOf(checkPermissions()) }
+
+    // Estados de UI
+    var isRecordingAudio by remember { mutableStateOf(false) }
+    var currentAudioFile by remember { mutableStateOf<File?>(null) }
+    var tempImageUri by remember { mutableStateOf<Uri?>(null) }
+    var tempVideoUri by remember { mutableStateOf<Uri?>(null) }
+
+    // Launcher de permisos
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissionsMap ->
+        // 2. Usamos la respuesta directa del sistema (Map)
+        // Si el mapa está vacío (puede pasar si el usuario cancela rápido), hacemos doble check
+        val allGrantedInMap = if (permissionsMap.isNotEmpty()) {
+            permissionsMap.values.all { it }
+        } else {
+            checkPermissions()
+        }
+        hasPermissions = allGrantedInMap
+    }
+
+    // 3. Ciclo de Vida: Para detectar si el usuario fue a Ajustes y volvió
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasPermissions = checkPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // 4. Opcional: Intento automático solo la primera vez
+    LaunchedEffect(Unit) {
         if (!hasPermissions) {
             permissionLauncher.launch(requiredPermissions)
         }
     }
 
-    // --- ActivityResult Launchers para CAPTURA ---
-    // 1. Launcher para Imagen (TakePicture)
+    // --- Launchers para CAPTURA (Cámara/Video) ---
     val imageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
@@ -95,9 +126,9 @@ fun RecordingScreen(
                 mediaViewModel.insertMediaFromUri(uri, MediaType.IMAGE)
             }
         }
-        tempImageUri = null // Limpiar
+        tempImageUri = null
     }
-    // 2. Launcher para Video (CaptureVideo)
+
     val videoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CaptureVideo()
     ) { success ->
@@ -106,10 +137,10 @@ fun RecordingScreen(
                 mediaViewModel.insertMediaFromUri(uri, MediaType.VIDEO)
             }
         }
-        tempVideoUri = null // Limpiar
+        tempVideoUri = null
     }
 
-    // --- Lógica de la UI ---
+    // --- UI ---
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -122,29 +153,33 @@ fun RecordingScreen(
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 32.dp)
         )
+
         if (!hasPermissions) {
-            Text("Se necesitan permisos de cámara, micrófono y almacenamiento para continuar.")
-            Button(onClick = { permissionLauncher.launch(requiredPermissions) }) {
+            Text("Se necesitan permisos para continuar.")
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = {
+                // Al hacer clic, volvemos a pedir los permisos
+                permissionLauncher.launch(requiredPermissions)
+            }) {
                 Text("Otorgar Permisos")
             }
         } else {
-            // Botón de Grabación de Audio (con estado)
+            // --- CONTROLES DE GRABACIÓN (Solo visibles si hay permisos) ---
+
+            // Botón Audio
             RecordingButton(
                 text = if (isRecordingAudio) "Detener Grabación Audio" else "Iniciar Grabación Audio",
                 icon = if (isRecordingAudio) Icons.Default.Stop else Icons.Default.Mic,
                 buttonColor = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 onClick = {
                     if (isRecordingAudio) {
-                        // --- DETENER ---
                         audioRecorder.stop()
                         currentAudioFile?.let {
-                            // Insertar el archivo grabado en la base de datos
                             mediaViewModel.insertMediaFromFile(it, MediaType.AUDIO)
                         }
                         isRecordingAudio = false
                         currentAudioFile = null
                     } else {
-                        // --- INICIAR ---
                         val audioFile = createTempFile(context, MediaType.AUDIO)
                         currentAudioFile = audioFile
                         audioRecorder.start(audioFile)
@@ -153,11 +188,11 @@ fun RecordingScreen(
                 }
             )
             Spacer(Modifier.height(16.dp))
-            // Botón de Captura de Imagen
+
+            // Botón Imagen
             RecordingButton(
                 text = "Capturar Imagen",
                 icon = Icons.Default.Image,
-                // Deshabilitar si ya estamos grabando audio
                 isEnabled = !isRecordingAudio,
                 onClick = {
                     val uri = createTempUri(context, MediaType.IMAGE)
@@ -166,11 +201,11 @@ fun RecordingScreen(
                 }
             )
             Spacer(Modifier.height(16.dp))
-            // Botón de Captura de Video
+
+            // Botón Video
             RecordingButton(
                 text = "Capturar Video",
                 icon = Icons.Default.Videocam,
-                // Deshabilitar si ya estamos grabando audio
                 isEnabled = !isRecordingAudio,
                 onClick = {
                     val uri = createTempUri(context, MediaType.VIDEO)
@@ -182,7 +217,8 @@ fun RecordingScreen(
     }
 }
 
-// --- Helpers para la RecordingScreen ---
+// --- Helpers ---
+
 @Composable
 private fun RecordingButton(
     text: String,
@@ -207,27 +243,27 @@ private fun RecordingButton(
 }
 
 /**
- * Define los permisos requeridos según la versión de Android.
+ * CORRECCIÓN CRÍTICA:
+ * Solo pedimos WRITE_EXTERNAL_STORAGE en versiones ANTIGUAS (SDK <= 28).
+ * En Android 10+ (SDK 29+), pedirlo causaba que fallara todo porque el Manifest lo prohíbe.
  */
 private fun getRequiredPermissions(): Array<String> {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    // Si es Android 10 (Q) o superior (SDK >= 29)
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         arrayOf(
             Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.RECORD_AUDIO
         )
     } else {
+        // Solo en Android 9 o inferior pedimos almacenamiento
         arrayOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
-            // Necesario para < 29 para MediaRecorder si guarda en ciertas ubicaciones
             Manifest.permission.WRITE_EXTERNAL_STORAGE
         )
     }
 }
 
-/**
- * Crea un archivo temporal en el almacenamiento externo de la app.
- */
 private fun createTempFile(context: Context, mediaType: MediaType): File {
     val (dir, extension) = when (mediaType) {
         MediaType.AUDIO -> Pair(Environment.DIRECTORY_MUSIC, ".mp3")
@@ -236,19 +272,13 @@ private fun createTempFile(context: Context, mediaType: MediaType): File {
     }
     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
     val fileName = "${mediaType.name.lowercase(Locale.ROOT)}_${timestamp}$extension"
-    // getExternalFilesDir(null) es la carpeta "Android/data/tu_paquete/files"
-    // Los directorios (DIRECTORY_MUSIC, etc.) son subcarpetas de ahí
+    // getExternalFilesDir no requiere permisos de storage en ninguna versión moderna
     val storageDir = context.getExternalFilesDir(dir)
     return File(storageDir, fileName)
 }
 
-/**
- * Crea una content:// Uri segura para un archivo temporal usando FileProvider.
- * Esto es lo que necesitan TakePicture y CaptureVideo.
- */
 private fun createTempUri(context: Context, mediaType: MediaType): Uri {
     val file = createTempFile(context, mediaType)
-    // El authority DEBE coincidir con lo que pusiste en AndroidManifest.xml
     val authority = "${context.packageName}.fileprovider"
     return FileProvider.getUriForFile(context, authority, file)
 }
