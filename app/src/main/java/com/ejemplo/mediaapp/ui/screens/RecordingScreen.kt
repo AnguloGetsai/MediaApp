@@ -110,7 +110,7 @@ fun RecordingScreen(
         }
     }
 
-    // 4. Opcional: Intento automático solo la primera vez
+
     LaunchedEffect(Unit) {
         if (!hasPermissions) {
             permissionLauncher.launch(requiredPermissions)
@@ -242,20 +242,17 @@ private fun RecordingButton(
     }
 }
 
-/**
- * CORRECCIÓN CRÍTICA:
- * Solo pedimos WRITE_EXTERNAL_STORAGE en versiones ANTIGUAS (SDK <= 28).
- * En Android 10+ (SDK 29+), pedirlo causaba que fallara todo porque el Manifest lo prohíbe.
- */
+
+
 private fun getRequiredPermissions(): Array<String> {
-    // Si es Android 10 (Q) o superior (SDK >= 29)
+
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         arrayOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO
         )
     } else {
-        // Solo en Android 9 o inferior pedimos almacenamiento
+
         arrayOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
@@ -272,7 +269,7 @@ private fun createTempFile(context: Context, mediaType: MediaType): File {
     }
     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
     val fileName = "${mediaType.name.lowercase(Locale.ROOT)}_${timestamp}$extension"
-    // getExternalFilesDir no requiere permisos de storage en ninguna versión moderna
+
     val storageDir = context.getExternalFilesDir(dir)
     return File(storageDir, fileName)
 }

@@ -26,7 +26,7 @@ fun VideoPlayerScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    // Obtener la instancia del player desde el ViewModel
+
     val exoPlayer = playbackViewModel.exoPlayer
 
     // Inicia la reproducción cuando el Composable entra en la pantalla
@@ -56,7 +56,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Usamos AndroidView para mostrar el PlayerView de ExoPlayer (un View tradicional)
+
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             factory = {

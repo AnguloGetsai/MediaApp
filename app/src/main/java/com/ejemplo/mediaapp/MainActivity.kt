@@ -11,13 +11,13 @@ import androidx.compose.ui.Modifier
 import com.ejemplo.mediaapp.ui.AppNavigation
 import com.ejemplo.mediaapp.ui.theme.MediaAppTheme
 
-// --- 20. MainActivity ---
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MediaAppTheme {
-                // Una superficie de contenedor usando el color 'background' del tema
+
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

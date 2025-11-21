@@ -49,7 +49,7 @@ import com.ejemplo.mediaapp.formatDuration
 import com.ejemplo.mediaapp.viewmodel.MediaViewModel
 import com.ejemplo.mediaapp.viewmodel.PlaybackViewModel
 
-// --- 16. Screen 2: Lista de Audio ---
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AudioListScreen(

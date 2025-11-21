@@ -22,9 +22,7 @@ fun formatDuration(millis: Long): String {
     )
 }
 
-/**
- * Convierte un timestamp (milisegundos) a formato "dd/MM/yyyy HH:mm".
- */
+ 
 fun formatDate(timestamp: Long): String {
     val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
     return sdf.format(Date(timestamp))
